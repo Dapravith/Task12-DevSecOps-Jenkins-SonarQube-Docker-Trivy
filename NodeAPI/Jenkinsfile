@@ -65,7 +65,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 dir("${APP_DIR}") {
-                    withSonarQubeEnv('SonarQube-Server') {
+                    withSonarQubeEnv('SonarQube-trivy-token') {
                         sh '''
                             $SCANNER_HOME/bin/sonar-scanner \
                             -Dsonar.projectKey=$SONAR_PROJECT_KEY \
