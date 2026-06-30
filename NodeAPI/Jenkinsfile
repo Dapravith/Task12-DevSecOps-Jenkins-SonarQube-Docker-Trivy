@@ -4,17 +4,24 @@ pipeline {
     options {
         disableConcurrentBuilds()
         timestamps()
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     environment {
         SCANNER_HOME = tool 'SonarScanner'
+
+        SONARQUBE_SERVER = 'SonarQube-trivy-token'
         SONAR_PROJECT_KEY = 'task12-nodeapi-microservice'
         SONAR_PROJECT_NAME = 'Task 12 NodeAPI Microservice'
+
+        APP_DIR = 'NodeAPI'
+
         IMAGE_NAME = 'task12-nodeapi'
         IMAGE_TAG = "${BUILD_NUMBER}"
         CONTAINER_NAME = 'task12-nodeapi-container'
+
         APP_PORT = '8000'
-        APP_DIR = 'NodeAPI'
+        CONTAINER_PORT = '3000'
     }
 
     stages {
@@ -28,14 +35,39 @@ pipeline {
         stage('Check Runtime') {
             steps {
                 sh '''
-                    echo "Checking Node.js..."
+                    echo "========== Check Runtime =========="
+
+                    echo "Node.js version:"
                     node -v
 
-                    echo "Checking npm..."
+                    echo "npm version:"
                     npm -v
 
-                    echo "Checking Docker..."
+                    echo "Docker version:"
                     docker --version
+
+                    echo "Docker permission test:"
+                    docker ps
+                '''
+            }
+        }
+
+        stage('Check Project Structure') {
+            steps {
+                sh '''
+                    echo "========== Workspace =========="
+                    pwd
+                    ls -la
+
+                    echo "========== NodeAPI Folder =========="
+                    ls -la $APP_DIR
+
+                    echo "========== Check Required Files =========="
+                    test -f $APP_DIR/package.json
+                    test -f $APP_DIR/Dockerfile
+                    test -d $APP_DIR/src
+
+                    echo "Project structure is valid."
                 '''
             }
         }
@@ -44,6 +76,7 @@ pipeline {
             steps {
                 dir("${APP_DIR}") {
                     sh '''
+                        echo "========== Install Dependencies =========="
                         npm ci --no-audit --fund=false
                     '''
                 }
@@ -53,10 +86,12 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 dir("${APP_DIR}") {
-                    withSonarQubeEnv('SonarQube-trivy-token') {
+                    withSonarQubeEnv("${SONARQUBE_SERVER}") {
                         sh '''
+                            echo "========== SonarQube Analysis =========="
+
                             $SCANNER_HOME/bin/sonar-scanner \
-                            -Dsonar.projectKey=$SONAR_PROJECT_KEY \
+                            -Dsonar.projectKey="$SONAR_PROJECT_KEY" \
                             -Dsonar.projectName="$SONAR_PROJECT_NAME" \
                             -Dsonar.sources=src \
                             -Dsonar.exclusions=node_modules/**,coverage/**,dist/**,.git/**,test/** \
@@ -69,7 +104,7 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                timeout(time: 3, unit: 'MINUTES') {
+                timeout(time: 10, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
             }
@@ -79,6 +114,8 @@ pipeline {
             steps {
                 dir("${APP_DIR}") {
                     sh '''
+                        echo "========== Trivy File Scan =========="
+
                         docker run --rm \
                         -v "$PWD:/project" \
                         -v "$HOME/.cache/trivy:/root/.cache/" \
@@ -97,6 +134,8 @@ pipeline {
             steps {
                 dir("${APP_DIR}") {
                     sh '''
+                        echo "========== Build Docker Image =========="
+
                         docker build \
                         -t $IMAGE_NAME:$IMAGE_TAG \
                         -t $IMAGE_NAME:latest \
@@ -109,6 +148,8 @@ pipeline {
         stage('Trivy Image Scan') {
             steps {
                 sh '''
+                    echo "========== Trivy Image Scan =========="
+
                     docker run --rm \
                     -v /var/run/docker.sock:/var/run/docker.sock \
                     -v "$HOME/.cache/trivy:/root/.cache/" \
@@ -123,12 +164,14 @@ pipeline {
         stage('Run Docker Container') {
             steps {
                 sh '''
+                    echo "========== Run Docker Container =========="
+
                     docker stop $CONTAINER_NAME || true
                     docker rm $CONTAINER_NAME || true
 
                     docker run -d \
                     --name $CONTAINER_NAME \
-                    -p $APP_PORT:3000 \
+                    -p $APP_PORT:$CONTAINER_PORT \
                     -e NODE_ENV=production \
                     $IMAGE_NAME:$IMAGE_TAG
                 '''
@@ -138,7 +181,10 @@ pipeline {
         stage('Health Check') {
             steps {
                 sh '''
-                    sleep 3
+                    echo "========== Health Check =========="
+
+                    sleep 5
+
                     curl -f http://localhost:$APP_PORT/health
                 '''
             }
@@ -146,7 +192,10 @@ pipeline {
 
         stage('Check Running Containers') {
             steps {
-                sh 'docker ps'
+                sh '''
+                    echo "========== Docker Containers =========="
+                    docker ps
+                '''
             }
         }
     }
@@ -154,10 +203,15 @@ pipeline {
     post {
         success {
             echo 'Pipeline completed successfully.'
+            echo "API is running on: http://JENKINS_PUBLIC_IP:${APP_PORT}/health"
         }
 
         failure {
-            echo 'Pipeline failed. Please check console output.'
+            echo 'Pipeline failed. Please check the Jenkins console output.'
+        }
+
+        aborted {
+            echo 'Pipeline was aborted or timeout occurred.'
         }
     }
 }
