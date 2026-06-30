@@ -15,7 +15,7 @@ pipeline {
         stage('Clone from GitHub') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/Dapravith/Task12-DevSecOps-Jenkins-SonarQube-Docker-Trivy.git'
+                    url: 'git@github.com:Dapravith/Task12-DevSecOps-Jenkins-SonarQube-Docker-Trivy.git'
             }
         }
 
@@ -110,6 +110,12 @@ pipeline {
                 '''
             }
         }
+
+        stage('Check Running Containers') {
+            steps {
+                sh 'docker ps'
+            }
+        }
     }
 
     post {
@@ -119,10 +125,6 @@ pipeline {
 
         failure {
             echo 'Pipeline failed. Please check console output.'
-        }
-
-        always {
-            sh 'docker ps || true'
         }
     }
 }
