@@ -15,7 +15,7 @@ pipeline {
         stage('Clone from GitHub') {
             steps {
                 git branch: 'main',
-                    url: 'git@github.com:Dapravith/Task12-DevSecOps-Jenkins-SonarQube-Docker-Trivy.git'
+                    url: 'https://github.com/Dapravith/Task12-DevSecOps-Jenkins-SonarQube-Docker-Trivy.git'
             }
         }
 
