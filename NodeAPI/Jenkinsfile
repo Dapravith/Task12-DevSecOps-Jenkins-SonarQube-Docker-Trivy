@@ -22,6 +22,7 @@ pipeline {
 
         APP_PORT = '8000'
         CONTAINER_PORT = '3000'
+        JENKINS_PUBLIC_IP = '54.196.191.14'
     }
 
     stages {
@@ -173,7 +174,11 @@ pipeline {
                     --name $CONTAINER_NAME \
                     -p $APP_PORT:$CONTAINER_PORT \
                     -e NODE_ENV=production \
+                    -e PORT=$CONTAINER_PORT \
                     $IMAGE_NAME:$IMAGE_TAG
+
+                    echo "Container status after start:"
+                    docker ps -a --filter "name=$CONTAINER_NAME"
                 '''
             }
         }
@@ -183,9 +188,36 @@ pipeline {
                 sh '''
                     echo "========== Health Check =========="
 
-                    sleep 5
+                    echo "Container status:"
+                    docker ps -a --filter "name=$CONTAINER_NAME"
 
-                    curl -f http://localhost:$APP_PORT/health
+                    echo "Waiting for API to become ready..."
+
+                    for i in 1 2 3 4 5 6 7 8 9 10
+                    do
+                        echo "Health check attempt $i..."
+
+                        if curl -fsS http://127.0.0.1:$APP_PORT/health
+                        then
+                            echo "API health check passed."
+                            exit 0
+                        fi
+
+                        echo "API is not ready yet. Container logs:"
+                        docker logs --tail=50 $CONTAINER_NAME || true
+
+                        sleep 3
+                    done
+
+                    echo "Health check failed after retries."
+
+                    echo "Final container status:"
+                    docker ps -a --filter "name=$CONTAINER_NAME"
+
+                    echo "Final container logs:"
+                    docker logs $CONTAINER_NAME || true
+
+                    exit 1
                 '''
             }
         }
@@ -203,7 +235,7 @@ pipeline {
     post {
         success {
             echo 'Pipeline completed successfully.'
-            echo "API is running on: http://JENKINS_PUBLIC_IP:${APP_PORT}/health"
+            echo "API is running on: http://${JENKINS_PUBLIC_IP}:${APP_PORT}/health"
         }
 
         failure {
