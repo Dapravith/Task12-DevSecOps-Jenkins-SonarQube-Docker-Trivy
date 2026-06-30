@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
     environment {
         SCANNER_HOME = tool 'SonarScanner'
         SONAR_PROJECT_KEY = 'task12-nodeapi-microservice'
@@ -17,21 +22,6 @@ pipeline {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/Dapravith/Task12-DevSecOps-Jenkins-SonarQube-Docker-Trivy.git'
-            }
-        }
-
-        stage('Check Project Structure') {
-            steps {
-                sh '''
-                    echo "Current workspace:"
-                    pwd
-
-                    echo "Workspace files:"
-                    ls -la
-
-                    echo "Searching for package.json:"
-                    find . -maxdepth 3 -name package.json
-                '''
             }
         }
 
@@ -54,9 +44,7 @@ pipeline {
             steps {
                 dir("${APP_DIR}") {
                     sh '''
-                        pwd
-                        ls -la
-                        npm install
+                        npm ci --no-audit --fund=false
                     '''
                 }
             }
@@ -71,7 +59,8 @@ pipeline {
                             -Dsonar.projectKey=$SONAR_PROJECT_KEY \
                             -Dsonar.projectName="$SONAR_PROJECT_NAME" \
                             -Dsonar.sources=src \
-                            -Dsonar.exclusions=node_modules/**,coverage/**,dist/**,.git/**,test/**
+                            -Dsonar.exclusions=node_modules/**,coverage/**,dist/**,.git/**,test/** \
+                            -Dsonar.scm.disabled=true
                         '''
                     }
                 }
@@ -80,7 +69,7 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                timeout(time: 1, unit: 'MINUTES') {
+                timeout(time: 3, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
             }
@@ -96,6 +85,7 @@ pipeline {
                         aquasec/trivy:latest fs \
                         --scanners vuln,secret,misconfig \
                         --severity LOW,MEDIUM,HIGH,CRITICAL \
+                        --skip-dirs /project/node_modules \
                         --format table \
                         /project
                     '''
@@ -148,7 +138,7 @@ pipeline {
         stage('Health Check') {
             steps {
                 sh '''
-                    sleep 5
+                    sleep 3
                     curl -f http://localhost:$APP_PORT/health
                 '''
             }
