@@ -19,6 +19,21 @@ pipeline {
             }
         }
 
+        stage('Check Runtime') {
+            steps {
+                sh '''
+                    echo "Checking Node.js..."
+                    node -v
+
+                    echo "Checking npm..."
+                    npm -v
+
+                    echo "Checking Docker..."
+                    docker --version
+                '''
+            }
+        }
+
         stage('Install Dependencies') {
             steps {
                 sh 'npm install'
