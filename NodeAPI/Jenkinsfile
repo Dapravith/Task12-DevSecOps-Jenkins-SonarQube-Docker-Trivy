@@ -9,6 +9,7 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
         CONTAINER_NAME = 'task12-nodeapi-container'
         APP_PORT = '8000'
+        APP_DIR = 'NodeAPI'
     }
 
     stages {
@@ -16,6 +17,21 @@ pipeline {
             steps {
                 git branch: 'main',
                     url: 'https://github.com/Dapravith/Task12-DevSecOps-Jenkins-SonarQube-Docker-Trivy.git'
+            }
+        }
+
+        stage('Check Project Structure') {
+            steps {
+                sh '''
+                    echo "Current workspace:"
+                    pwd
+
+                    echo "Workspace files:"
+                    ls -la
+
+                    echo "Searching for package.json:"
+                    find . -maxdepth 3 -name package.json
+                '''
             }
         }
 
@@ -36,20 +52,28 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'npm install'
+                dir("${APP_DIR}") {
+                    sh '''
+                        pwd
+                        ls -la
+                        npm install
+                    '''
+                }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('SonarQube-Server') {
-                    sh '''
-                        $SCANNER_HOME/bin/sonar-scanner \
-                        -Dsonar.projectKey=$SONAR_PROJECT_KEY \
-                        -Dsonar.projectName="$SONAR_PROJECT_NAME" \
-                        -Dsonar.sources=src \
-                        -Dsonar.exclusions=node_modules/**,coverage/**,dist/**,.git/**,test/**
-                    '''
+                dir("${APP_DIR}") {
+                    withSonarQubeEnv('SonarQube-Server') {
+                        sh '''
+                            $SCANNER_HOME/bin/sonar-scanner \
+                            -Dsonar.projectKey=$SONAR_PROJECT_KEY \
+                            -Dsonar.projectName="$SONAR_PROJECT_NAME" \
+                            -Dsonar.sources=src \
+                            -Dsonar.exclusions=node_modules/**,coverage/**,dist/**,.git/**,test/**
+                        '''
+                    }
                 }
             }
         }
@@ -64,27 +88,31 @@ pipeline {
 
         stage('Trivy File Scan') {
             steps {
-                sh '''
-                    docker run --rm \
-                    -v "$PWD:/project" \
-                    -v "$HOME/.cache/trivy:/root/.cache/" \
-                    aquasec/trivy:latest fs \
-                    --scanners vuln,secret,misconfig \
-                    --severity LOW,MEDIUM,HIGH,CRITICAL \
-                    --format table \
-                    /project
-                '''
+                dir("${APP_DIR}") {
+                    sh '''
+                        docker run --rm \
+                        -v "$PWD:/project" \
+                        -v "$HOME/.cache/trivy:/root/.cache/" \
+                        aquasec/trivy:latest fs \
+                        --scanners vuln,secret,misconfig \
+                        --severity LOW,MEDIUM,HIGH,CRITICAL \
+                        --format table \
+                        /project
+                    '''
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                    docker build \
-                    -t $IMAGE_NAME:$IMAGE_TAG \
-                    -t $IMAGE_NAME:latest \
-                    .
-                '''
+                dir("${APP_DIR}") {
+                    sh '''
+                        docker build \
+                        -t $IMAGE_NAME:$IMAGE_TAG \
+                        -t $IMAGE_NAME:latest \
+                        .
+                    '''
+                }
             }
         }
 
